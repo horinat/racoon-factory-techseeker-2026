@@ -1,0 +1,14 @@
+{
+  "name": "m5stack-score-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Score API and ranking page for an M5Stack target game",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "check": "node --check src/server.js"
+  },
+  "dependencies": {
+    "pg": "8.16.3"
+  }
+}

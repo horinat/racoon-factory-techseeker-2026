@@ -1,0 +1,34 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      PORT: "3000"
+      API_KEY: "${API_KEY:?Set API_KEY in Dokploy environment variables}"
+      DATABASE_URL: "postgresql://score_app:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Dokploy environment variables}@db:5432/score_db"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: score_db
+      POSTGRES_USER: score_app
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Dokploy environment variables}"
+    volumes:
+      - score_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U score_app -d score_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  score_db_data:
