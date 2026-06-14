@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RacoonFactory | テックシーカーハッカソン2026</title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <a class="event-badge" href="https://techseeker.jp/" target="_blank" rel="noreferrer">
+          テックシーカーハッカソン2026 出展作品
+        </a>
+        <p class="eyebrow">TEAM U / RACOONFACTORY</p>
+        <h1>スコアランキング</h1>
+        <p class="subtitle">身体を拡張するターゲットゲーム。30秒間でハイスコアを狙おう。</p>
+      </header>
+
+      <nav aria-label="ランキング期間">
+        <button data-period="today">今日</button>
+        <button data-period="week">直近7日</button>
+        <button data-period="all" class="active">全期間</button>
+      </nav>
+
+      <section>
+        <p id="status">ランキングを読み込み中...</p>
+        <ol id="ranking" aria-live="polite"></ol>
+      </section>
+
+      <footer>
+        <strong>Team U「RacoonFactory」</strong>
+        <span>Created for テックシーカーハッカソン2026</span>
+        <a href="https://techseeker.jp/" target="_blank" rel="noreferrer">TechSeeker公式サイト</a>
+      </footer>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
