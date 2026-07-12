@@ -23,7 +23,7 @@ constexpr uint32_t HIT_COOLDOWN_MS = 300;
 constexpr int START_PIN = 32;    // PORT-A yellow. Digital input, active LOW.
 constexpr int PAUSE_PIN = 33;    // PORT-A white. Digital input, active LOW.
 constexpr int RESTART_PIN = 26;  // PORT-B yellow. Digital input, active LOW.
-constexpr int TARGET_PIN = 36;   // PORT-B white. Digital input, active HIGH. Input-only pin.
+constexpr int TARGET_PIN = 14;   // PORT-C yellow. Digital input, active LOW.
 constexpr int SERVO_PIN = 13;    // PORT-C white. PWM output signal.
 
 // Servo settings. Change these after Saturday's angle test.
@@ -206,7 +206,7 @@ void setup() {
   pinMode(START_PIN, INPUT_PULLUP);
   pinMode(PAUSE_PIN, INPUT_PULLUP);
   pinMode(RESTART_PIN, INPUT_PULLUP);
-  pinMode(TARGET_PIN, INPUT);
+  pinMode(TARGET_PIN, INPUT_PULLUP);
   ledcSetup(SERVO_PWM_CHANNEL, SERVO_PWM_HZ, SERVO_PWM_BITS);
   ledcAttachPin(SERVO_PIN, SERVO_PWM_CHANNEL);
   setServoAngle(SERVO_IDLE_ANGLE);
@@ -254,7 +254,7 @@ void updateExternalInputs() {
   bool startPressed = digitalRead(START_PIN) == LOW;
   bool pausePressed = digitalRead(PAUSE_PIN) == LOW;
   bool restartPressed = digitalRead(RESTART_PIN) == LOW;
-  bool targetDetected = digitalRead(TARGET_PIN) == HIGH;
+  bool targetDetected = digitalRead(TARGET_PIN) == LOW;
 
   if (risingEdge(startPressed, previousStartState) && !gameRunning) {
     startGame();
