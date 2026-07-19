@@ -14,22 +14,26 @@ const char* API_URL =
 const char* DEVICE_ID = "core2-demo-01";
 const char* PLAYER_NAME = "CORE2 PLAYER";
 
-constexpr uint32_t GAME_DURATION_MS = 30000;
+constexpr uint32_t GAME_DURATION_SECONDS = 60;
+constexpr uint32_t GAME_DURATION_MS = GAME_DURATION_SECONDS * 1000;
 constexpr uint32_t HIT_COOLDOWN_MS = 300;
+constexpr uint8_t WIFI_CONNECT_ATTEMPTS = 2;
+constexpr uint8_t SCORE_SEND_ATTEMPTS = 2;
 
 // Temporary pin assignment for TechSeeker prototype.
 // Core2 official pin map:
 // PORT-A: G32/G33, PORT-B: G26/G36, PORT-C: G14/G13.
 constexpr int START_PIN = 32;    // PORT-A yellow. Digital input, active LOW.
-constexpr int PAUSE_PIN = 33;    // PORT-A white. Digital input, active LOW.
-constexpr int RESTART_PIN = 26;  // PORT-B yellow. Digital input, active LOW.
-constexpr int TARGET_PIN = 14;   // PORT-C yellow. Digital input, active LOW.
+constexpr int RESTART_PIN = 14;  // PORT-C yellow. Digital input, active LOW.
+constexpr int TARGET_PIN = 26;   // PORT-B yellow. Digital input, active LOW.
 constexpr int SERVO_PIN = 13;    // PORT-C white. PWM output signal.
 
 // Servo settings. Change these after Saturday's angle test.
 constexpr int SERVO_IDLE_ANGLE = 0;
-constexpr int SERVO_HIT_ANGLE = 60;
-constexpr uint32_t SERVO_HIT_MS = 180;
+constexpr int SERVO_SEQUENCE_ANGLES[] = {120, 140, 90, 0};
+constexpr uint32_t SERVO_SEQUENCE_INTERVALS_MS[] = {100, 100, 100, 100};
+constexpr size_t SERVO_SEQUENCE_COUNT =
+    sizeof(SERVO_SEQUENCE_ANGLES) / sizeof(SERVO_SEQUENCE_ANGLES[0]);
 constexpr int SERVO_PWM_HZ = 50;
 constexpr int SERVO_PWM_BITS = 16;
 constexpr int SERVO_PWM_CHANNEL = 0;
@@ -44,12 +48,12 @@ uint32_t gameStartedAt = 0;
 uint32_t pausedRemainingMs = GAME_DURATION_MS;
 uint32_t gameNumber = 0;
 uint32_t lastHitAt = 0;
-uint32_t servoReturnAt = 0;
-bool servoIsHit = false;
+uint32_t servoNextStepAt = 0;
+size_t servoSequenceIndex = 0;
+bool servoSequenceRunning = false;
 String lastSendMessage = "";
 
 bool previousStartState = false;
-bool previousPauseState = false;
 bool previousRestartState = false;
 bool previousTargetState = false;
 
@@ -93,36 +97,42 @@ void drawTimeLeft() {
   M5.Display.drawString(String(secondsLeft) + " sec", 160, 180, 2);
 }
 
-void connectWifi() {
-  if (WiFi.status() == WL_CONNECTED) return;
+bool connectWifi(bool forceReconnect = false) {
+  if (!forceReconnect && WiFi.status() == WL_CONNECTED) return true;
 
   M5.Display.fillScreen(TFT_BLACK);
   M5.Display.setTextDatum(MC_DATUM);
   M5.Display.setTextColor(TFT_WHITE, TFT_BLACK);
   M5.Display.drawString("Connecting Wi-Fi...", 160, 100, 2);
 
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  uint32_t started = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - started < 15000) {
-    delay(250);
+  for (uint8_t attempt = 1; attempt <= WIFI_CONNECT_ATTEMPTS; attempt++) {
+    if (forceReconnect || attempt > 1) {
+      WiFi.disconnect(false);
+      delay(500);
+    }
+
+    WiFi.mode(WIFI_STA);
+    WiFi.setSleep(false);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    uint32_t started = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - started < 15000) {
+      delay(250);
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.printf("Wi-Fi connected IP=%s RSSI=%d\n",
+                    WiFi.localIP().toString().c_str(), WiFi.RSSI());
+      return true;
+    }
   }
+
+  Serial.printf("Wi-Fi failed status=%d\n", WiFi.status());
+  return false;
 }
 
 bool sendScore() {
-  connectWifi();
-  if (WiFi.status() != WL_CONNECTED) {
+  if (!connectWifi()) {
     lastSendMessage = "Wi-Fi failed";
-    Serial.println(lastSendMessage);
-    return false;
-  }
-
-  WiFiClientSecure client;
-  // Demo setting for the generated sslip.io domain. Use a CA certificate for production.
-  client.setInsecure();
-
-  HTTPClient http;
-  if (!http.begin(client, API_URL)) {
-    lastSendMessage = "HTTP begin failed";
     Serial.println(lastSendMessage);
     return false;
   }
@@ -133,23 +143,48 @@ bool sendScore() {
   json += "\"device_id\":\"" + String(DEVICE_ID) + "\",";
   json += "\"player_name\":\"" + String(PLAYER_NAME) + "\",";
   json += "\"score\":" + String(score) + ",";
-  json += "\"duration_seconds\":30,";
-  // The server stores received_at, so this demo uses a valid placeholder timestamp.
+  json += "\"duration_seconds\":" + String(GAME_DURATION_SECONDS) + ",";
   json += "\"started_at\":\"2026-06-14T00:00:00+09:00\"";
   json += "}";
 
-  http.addHeader("Authorization", "Bearer " + String(API_KEY));
-  http.addHeader("Content-Type", "application/json");
-  int status = http.POST(json);
-  String response = http.getString();
-  Serial.printf("POST status=%d response=%s\n", status, response.c_str());
-  http.end();
+  for (uint8_t attempt = 1; attempt <= SCORE_SEND_ATTEMPTS; attempt++) {
+    WiFiClientSecure client;
+    // Demo setting for the generated sslip.io domain. Use a CA certificate for production.
+    client.setInsecure();
+    client.setHandshakeTimeout(30);
 
-  lastSendMessage = "HTTP " + String(status);
-  if (response.length() > 0) {
-    lastSendMessage += " " + response.substring(0, 40);
+    HTTPClient http;
+    http.setReuse(false);
+    http.setTimeout(15000);
+    if (!http.begin(client, API_URL)) {
+      lastSendMessage = "HTTP begin failed";
+      Serial.println(lastSendMessage);
+      return false;
+    }
+
+    http.addHeader("Authorization", "Bearer " + String(API_KEY));
+    http.addHeader("Content-Type", "application/json");
+    int status = http.POST(json);
+    String response = http.getString();
+    Serial.printf("POST attempt=%d status=%d response=%s\n", attempt, status,
+                  response.c_str());
+    http.end();
+
+    lastSendMessage = "HTTP " + String(status);
+    if (status < 0) {
+      lastSendMessage += " " + http.errorToString(status);
+    }
+    if (response.length() > 0) {
+      lastSendMessage += " " + response.substring(0, 40);
+    }
+
+    if (status == 201 || status == 409) return true;
+    if (status >= 400) return false;
+
+    connectWifi(true);
   }
-  return status == 201;
+
+  return false;
 }
 
 void startGame() {
@@ -204,7 +239,6 @@ void setup() {
   Serial.begin(115200);
 
   pinMode(START_PIN, INPUT_PULLUP);
-  pinMode(PAUSE_PIN, INPUT_PULLUP);
   pinMode(RESTART_PIN, INPUT_PULLUP);
   pinMode(TARGET_PIN, INPUT_PULLUP);
   ledcSetup(SERVO_PWM_CHANNEL, SERVO_PWM_HZ, SERVO_PWM_BITS);
@@ -224,6 +258,14 @@ void setServoAngle(int angle) {
   ledcWrite(SERVO_PWM_CHANNEL, servoAngleToDuty(angle));
 }
 
+void startServoSequence() {
+  servoSequenceRunning = true;
+  servoSequenceIndex = 0;
+  int angle = SERVO_SEQUENCE_ANGLES[servoSequenceIndex];
+  setServoAngle(angle);
+  servoNextStepAt = millis() + SERVO_SEQUENCE_INTERVALS_MS[servoSequenceIndex];
+}
+
 bool risingEdge(bool currentState, bool& previousState) {
   bool triggered = currentState && !previousState;
   previousState = currentState;
@@ -237,35 +279,36 @@ void registerHit() {
 
   lastHitAt = now;
   score += 1;
-  setServoAngle(SERVO_HIT_ANGLE);
-  servoIsHit = true;
-  servoReturnAt = now + SERVO_HIT_MS;
   drawGame();
+  startServoSequence();
 }
 
 void updateServo() {
-  if (servoIsHit && millis() >= servoReturnAt) {
-    setServoAngle(SERVO_IDLE_ANGLE);
-    servoIsHit = false;
+  if (!servoSequenceRunning || millis() < servoNextStepAt) return;
+
+  servoSequenceIndex++;
+  if (servoSequenceIndex >= SERVO_SEQUENCE_COUNT) {
+    servoSequenceRunning = false;
+    return;
   }
+
+  int angle = SERVO_SEQUENCE_ANGLES[servoSequenceIndex];
+  setServoAngle(angle);
+  servoNextStepAt = millis() + SERVO_SEQUENCE_INTERVALS_MS[servoSequenceIndex];
 }
 
 void updateExternalInputs() {
   bool startPressed = digitalRead(START_PIN) == LOW;
-  bool pausePressed = digitalRead(PAUSE_PIN) == LOW;
   bool restartPressed = digitalRead(RESTART_PIN) == LOW;
   bool targetDetected = digitalRead(TARGET_PIN) == LOW;
 
   if (risingEdge(startPressed, previousStartState) && !gameRunning) {
     startGame();
   }
-  if (risingEdge(pausePressed, previousPauseState)) {
-    pauseGame();
-  }
   if (risingEdge(restartPressed, previousRestartState)) {
     if (gamePaused) {
       resumeGame();
-    } else if (!gameRunning) {
+    } else {
       startGame();
     }
   }
@@ -279,13 +322,10 @@ void loop() {
   updateExternalInputs();
   updateServo();
 
-  if (!gameRunning && M5.BtnA.wasPressed()) {
+  bool buttonAPressed = M5.BtnA.wasPressed();
+  if (!gameRunning && buttonAPressed) {
     startGame();
-  }
-  if (gameRunning && !gamePaused && M5.BtnA.wasPressed()) {
-    pauseGame();
-  }
-  if (gameRunning && gamePaused && M5.BtnA.wasPressed()) {
+  } else if (gameRunning && gamePaused && buttonAPressed) {
     resumeGame();
   }
 
