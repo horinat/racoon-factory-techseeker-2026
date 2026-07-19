@@ -1,6 +1,6 @@
 ## Play Demo
 - 実際のランキング画面: https://racoonfactory-techseeker-2026-wvbquo-34408a-220-158-16-196.sslip.io/
-- 作品説明: M5Stack からスコアを送信してランキングを表示するゲームです
+- 作品説明: [とんがりショット](https://protopedia.net/prototype/8972)
 
 # M5Stack Score Server
 
