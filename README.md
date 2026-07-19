@@ -1,3 +1,7 @@
+## Play Demo
+- 実際のランキング画面: https://racoonfactory-techseeker-2026-wvbquo-34408a-220-158-16-196.sslip.io/
+- 作品説明: M5Stack からスコアを送信してランキングを表示するゲームです
+
 # M5Stack Score Server
 
 M5Stackからゲーム結果を受信し、PostgreSQLへ保存してランキング表示するDokploy向けアプリです。
@@ -82,6 +86,3 @@ curl -X POST https://score.example.com/api/scores \
     "started_at":"2026-06-14T15:00:00+09:00"
   }'
 ```
-## Play Demo
-- 実際のランキング画面: https://racoonfactory-techseeker-2026-wvbquo-34408a-220-158-16-196.sslip.io/
-- 作品説明: M5Stack からスコアを送信してランキングを表示するゲームです
